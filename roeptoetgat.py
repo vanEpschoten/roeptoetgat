@@ -8,6 +8,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
+
 # --- JOUW GEGEVENS VIA ENV ---
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
@@ -39,11 +40,12 @@ def worker_taak(url_lijst):
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-
+    
     driver = webdriver.Chrome(
         service=Service(ChromeDriverManager().install()),
         options=options
     )
+
 
     try:
         for url in url_lijst:
@@ -117,3 +119,4 @@ while True:
     except Exception as e:
         print(f"⚠️ Er ging iets mis in de hoofdloop: {e}", flush=True)
         time.sleep(10)
+
