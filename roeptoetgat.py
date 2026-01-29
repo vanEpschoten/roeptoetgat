@@ -17,9 +17,6 @@ KEYWORD = "Roeptoetgat"
 CHECK_INTERVAL = 30  
 WORKERS = 4 
 
-# --- HET LOKALE PAD NAAR JE DRIVER ---
-GECKO_PATH = r"C:\Users\duboi\.wdm\drivers\geckodriver\win64\v0.36.0\geckodriver.exe"
-
 geheugen = {}
 
 def stuur_mail(onderwerp, bericht):
@@ -107,3 +104,4 @@ while True:
         print(f"⚠️ Er ging iets mis in de hoofdloop: {e}")
 
         time.sleep(10)
+
