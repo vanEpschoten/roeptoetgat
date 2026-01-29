@@ -4,9 +4,9 @@ import smtplib
 from concurrent.futures import ThreadPoolExecutor
 from email.mime.text import MIMEText
 from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.firefox.service import Service
-from webdriver_manager.firefox import GeckoDriverManager
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 # --- JOUW GEGEVENS VIA ENV ---
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
@@ -37,8 +37,11 @@ def stuur_mail(onderwerp, bericht):
 def worker_taak(url_lijst):
     options = Options()
     options.add_argument("--headless")
-    driver = webdriver.Firefox(
-        service=Service(GeckoDriverManager().install()),
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
         options=options
     )
 
@@ -76,8 +79,11 @@ def scan_site(ronde):
 
     options = Options()
     options.add_argument("--headless")
-    main_driver = webdriver.Firefox(
-        service=Service(GeckoDriverManager().install()),
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+
+    main_driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
         options=options
     )
 
