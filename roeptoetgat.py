@@ -3,6 +3,7 @@ import time
 import smtplib
 from email.mime.text import MIMEText
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright
 
 # --- JOUW GEGEVENS VIA ENV ---
@@ -15,8 +16,10 @@ KEYWORD = "Roeptoetgat"
 CHECK_INTERVAL = 30  # seconden
 WORKERS = 4
 
+# geheugen per URL
 geheugen = {}
 
+# --- FUNCTIES ---
 def stuur_mail(onderwerp, bericht):
     msg = MIMEText(bericht)
     msg['Subject'] = onderwerp
@@ -31,42 +34,44 @@ def stuur_mail(onderwerp, bericht):
     except Exception as e:
         print(f"❌ Mail fout: {e}", flush=True)
 
-def worker_taak(url_lijst):
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
 
-        for url in url_lijst:
-            try:
-                print(f"   👉 Checken: {url}", flush=True)
-                page.goto(url, timeout=15000)
-                page.wait_for_timeout(2000)
+def worker_taak(url_lijst, browser):
+    """Worker checkt lijst van URL's binnen gedeelde browser."""
+    context = browser.new_context()
+    page = context.new_page()
 
-                # Pak de zichtbare tekst
-                tekst = page.inner_text("body")
-                aantal_nu = tekst.lower().count(KEYWORD.lower())
+    for url in url_lijst:
+        try:
+            print(f"   👉 Checken: {url}", flush=True)
+            page.goto(url, timeout=15000)
+            page.wait_for_timeout(2000)
 
-                vorig_aantal = geheugen.get(url, None)
+            tekst = page.inner_text("body")
+            aantal_nu = tekst.lower().count(KEYWORD.lower())
+            vorig_aantal = geheugen.get(url, None)
 
-                if vorig_aantal is None:
-                    geheugen[url] = aantal_nu
-                    if aantal_nu > 0:
-                        print(f"   📍 {url} -> Zichtbaar gevonden: {aantal_nu}x", flush=True)
-                    continue
+            if vorig_aantal is None:
+                geheugen[url] = aantal_nu
+                if aantal_nu > 0:
+                    print(f"   📍 {url} -> Zichtbaar gevonden: {aantal_nu}x", flush=True)
+                continue
 
-                if aantal_nu > vorig_aantal:
-                    print(f"🎯 ECHTE MATCH GEVONDEN OP: {url}!", flush=True)
-                    stuur_mail(f"🎯 ZICHTBARE MATCH: {KEYWORD}",
-                               f"Het woord staat nu ECHT op de pagina: {url}\nAantal: {aantal_nu}")
-                    geheugen[url] = aantal_nu
+            if aantal_nu > vorig_aantal:
+                print(f"🎯 ECHTE MATCH GEVONDEN OP: {url}!", flush=True)
+                stuur_mail(
+                    f"🎯 ZICHTBARE MATCH: {KEYWORD}",
+                    f"Het woord staat nu ECHT op de pagina: {url}\nAantal: {aantal_nu}"
+                )
+                geheugen[url] = aantal_nu
 
-            except Exception as e:
-                print(f"   ❌ Fout op {url}: {e}", flush=True)
+        except Exception as e:
+            print(f"   ❌ Fout op {url}: {e}", flush=True)
 
-        browser.close()
+    context.close()
+
 
 def scan_site(ronde):
+    """Haalt URLs op en verdeelt ze over workers."""
     print(f"\n🔍 [Ronde {ronde}] Start parallelle scan (Workers: {WORKERS})", flush=True)
 
     urls = [TARGET_URL]
@@ -83,16 +88,25 @@ def scan_site(ronde):
             for l in links:
                 href = l.get_attribute("href")
                 if href and any(x in href for x in ["/programma/", "/video/", "/aflevering/", "/radio/", "/tv/"]):
-                    if href not in urls:
-                        urls.append(href)
+                    full_url = urljoin(TARGET_URL, href)
+                    if full_url not in urls:
+                        urls.append(full_url)
+        except Exception as e:
+            print(f"⚠️ Fout bij verzamelen links: {e}", flush=True)
         finally:
+            context.close()
             browser.close()
 
     # Verdeel de lijst in stukjes voor workers
     stukjes = [urls[i::WORKERS] for i in range(WORKERS)]
 
-    with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-        executor.map(worker_taak, stukjes)
+    # Gebruik één browser instance voor alle workers
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        with ThreadPoolExecutor(max_workers=WORKERS) as executor:
+            executor.map(lambda chunk: worker_taak(chunk, browser), stukjes)
+        browser.close()
+
 
 # --- START DE LOOP ---
 ronde_teller = 1
