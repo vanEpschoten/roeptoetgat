@@ -1,13 +1,9 @@
-import time
 import os
+import time
 import smtplib
-from concurrent.futures import ThreadPoolExecutor
 from email.mime.text import MIMEText
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-
+from concurrent.futures import ThreadPoolExecutor
+from playwright.sync_api import sync_playwright
 
 # --- JOUW GEGEVENS VIA ENV ---
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
@@ -36,26 +32,20 @@ def stuur_mail(onderwerp, bericht):
         print(f"❌ Mail fout: {e}", flush=True)
 
 def worker_taak(url_lijst):
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
 
-
-    try:
         for url in url_lijst:
             try:
                 print(f"   👉 Checken: {url}", flush=True)
-                driver.get(url)
-                time.sleep(2)
+                page.goto(url, timeout=15000)
+                page.wait_for_timeout(2000)
 
-                zichtbare_tekst = driver.find_element("tag name", "body").text
-                aantal_nu = zichtbare_tekst.lower().count(KEYWORD.lower())
+                # Pak de zichtbare tekst
+                tekst = page.inner_text("body")
+                aantal_nu = tekst.lower().count(KEYWORD.lower())
 
                 vorig_aantal = geheugen.get(url, None)
 
@@ -67,42 +57,38 @@ def worker_taak(url_lijst):
 
                 if aantal_nu > vorig_aantal:
                     print(f"🎯 ECHTE MATCH GEVONDEN OP: {url}!", flush=True)
-                    stuur_mail(f"🎯 ZICHTBARE MATCH: {KEYWORD}", f"Het woord staat nu ECHT op de pagina: {url}\nAantal: {aantal_nu}")
+                    stuur_mail(f"🎯 ZICHTBARE MATCH: {KEYWORD}",
+                               f"Het woord staat nu ECHT op de pagina: {url}\nAantal: {aantal_nu}")
                     geheugen[url] = aantal_nu
 
             except Exception as e:
                 print(f"   ❌ Fout op {url}: {e}", flush=True)
 
-    finally:
-        driver.quit()
+        browser.close()
 
 def scan_site(ronde):
     print(f"\n🔍 [Ronde {ronde}] Start parallelle scan (Workers: {WORKERS})", flush=True)
 
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-
-    main_driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
-
     urls = [TARGET_URL]
-    try:
-        main_driver.get(TARGET_URL)
-        time.sleep(5)
-        links = main_driver.find_elements("tag name", "a")
-        for l in links:
-            href = l.get_attribute("href")
-            if href and any(x in href for x in ["/programma/", "/video/", "/aflevering/", "/radio/", "/tv/"]):
-                if href not in urls:
-                    urls.append(href)
-    finally:
-        main_driver.quit()
 
-    # Verdeel de lijst in stukjes voor de workers
+    # Eerste pagina ophalen en links verzamelen
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        try:
+            page.goto(TARGET_URL, timeout=15000)
+            page.wait_for_timeout(5000)
+            links = page.query_selector_all("a")
+            for l in links:
+                href = l.get_attribute("href")
+                if href and any(x in href for x in ["/programma/", "/video/", "/aflevering/", "/radio/", "/tv/"]):
+                    if href not in urls:
+                        urls.append(href)
+        finally:
+            browser.close()
+
+    # Verdeel de lijst in stukjes voor workers
     stukjes = [urls[i::WORKERS] for i in range(WORKERS)]
 
     with ThreadPoolExecutor(max_workers=WORKERS) as executor:
@@ -119,4 +105,3 @@ while True:
     except Exception as e:
         print(f"⚠️ Er ging iets mis in de hoofdloop: {e}", flush=True)
         time.sleep(10)
-
