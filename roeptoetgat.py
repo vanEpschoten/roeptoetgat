@@ -1,4 +1,5 @@
 import time
+import os
 import smtplib
 from concurrent.futures import ThreadPoolExecutor
 from email.mime.text import MIMEText
@@ -7,9 +8,9 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 
 # --- JOUW GEGEVENS ---
-EMAIL_SENDER = "duboispascal44@gmail.com"
-EMAIL_PASSWORD = "kxzm blms vzay cpim"
-EMAIL_RECEIVER = "tom_herpers@hotmail.com"
+EMAIL_SENDER = os.environ["EMAIL_SENDER"]
+EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
+EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 
 TARGET_URL = "https://brabantplus.omroepbrabant.nl"
 KEYWORD = "Roeptoetgat" 
@@ -104,4 +105,5 @@ while True:
         ronde_teller += 1
     except Exception as e:
         print(f"⚠️ Er ging iets mis in de hoofdloop: {e}")
+
         time.sleep(10)
